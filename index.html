@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control LiDAR 3D</title>
+
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    text-align: center;
+    padding: 40px 20px;
+}
+
+button {
+    font-size: 22px;
+    font-weight: bold;
+    padding: 22px 30px;
+    border: 0;
+    border-radius: 16px;
+    background: #a6e3a1;
+    color: #11111b;
+    width: 100%;
+    max-width: 400px;
+}
+
+#estado {
+    margin-top: 30px;
+    font-size: 18px;
+    white-space: pre-line;
+}
+</style>
+</head>
+
+<body>
+
+<h1>ESTACIÓN LiDAR 3D</h1>
+
+<p>Prueba de conexión Bluetooth</p>
+
+<button id="conectar">
+CONECTAR BLUETOOTH
+</button>
+
+<div id="estado">
+Sin conectar
+</div>
+
+<script>
+
+const SERVICE =
+'7cb5a001-7e5a-42da-b8b0-2a54c81d92a1';
+
+const CHAR =
+'7cb5a002-7e5a-42da-b8b0-2a54c81d92a1';
+
+
+document.getElementById('conectar').onclick = async () => {
+
+    const estado =
+        document.getElementById('estado');
+
+    try {
+
+        estado.textContent =
+            'Buscando LIDAR3D-PI5...';
+
+        const device =
+            await navigator.bluetooth.requestDevice({
+
+                filters: [
+                    { namePrefix: 'LIDAR3D-' }
+                ],
+
+                optionalServices: [
+                    SERVICE
+                ]
+            });
+
+
+        estado.textContent =
+            'Seleccionado: ' + device.name;
+
+
+        const server =
+            await device.gatt.connect();
+
+
+        const service =
+            await server.getPrimaryService(
+                SERVICE
+            );
+
+
+        const characteristic =
+            await service.getCharacteristic(
+                CHAR
+            );
+
+
+        const value =
+            await characteristic.readValue();
+
+
+        const texto =
+            new TextDecoder().decode(value);
+
+
+        estado.textContent =
+            'CONECTADO A ' +
+            device.name +
+            '\n\nRespuesta Raspberry: ' +
+            texto;
+
+    }
+
+    catch(error) {
+
+        estado.textContent =
+            'ERROR:\n' + error;
+    }
+};
+
+</script>
+
+</body>
+</html>
