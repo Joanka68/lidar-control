@@ -4,125 +4,86 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Control LiDAR 3D</title>
-
 <style>
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-    background: #1e1e2e;
-    color: #cdd6f4;
-    text-align: center;
-    padding: 40px 20px;
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;
+  background:#1e1e2e;
+  color:#cdd6f4;
+  text-align:center;
+  padding:40px 20px;
 }
-
-button {
-    font-size: 22px;
-    font-weight: bold;
-    padding: 22px 30px;
-    border: 0;
-    border-radius: 16px;
-    background: #a6e3a1;
-    color: #11111b;
-    width: 100%;
-    max-width: 400px;
+button{
+  display:block;
+  width:100%;
+  max-width:400px;
+  margin:16px auto;
+  font-size:20px;
+  font-weight:bold;
+  padding:20px;
+  border:0;
+  border-radius:16px;
 }
-
-#estado {
-    margin-top: 30px;
-    font-size: 18px;
-    white-space: pre-line;
-}
+#conectar{background:#a6e3a1;color:#11111b;}
+#prueba{background:#89b4fa;color:#11111b;}
+#estado{margin-top:30px;font-size:18px;white-space:pre-line;}
 </style>
 </head>
-
 <body>
 
 <h1>ESTACIÓN LiDAR 3D</h1>
 
-<p>Prueba de conexión Bluetooth</p>
+<button id="conectar">CONECTAR BLUETOOTH</button>
+<button id="prueba" disabled>ENVIAR PRUEBA</button>
 
-<button id="conectar">
-CONECTAR BLUETOOTH
-</button>
-
-<div id="estado">
-Sin conectar
-</div>
+<div id="estado">Sin conectar</div>
 
 <script>
+const SERVICE = '7cb5a001-7e5a-42da-b8b0-2a54c81d92a1';
+const CHAR    = '7cb5a002-7e5a-42da-b8b0-2a54c81d92a1';
 
-const SERVICE =
-'7cb5a001-7e5a-42da-b8b0-2a54c81d92a1';
-
-const CHAR =
-'7cb5a002-7e5a-42da-b8b0-2a54c81d92a1';
-
+let characteristic = null;
 
 document.getElementById('conectar').onclick = async () => {
+  const estado = document.getElementById('estado');
 
-    const estado =
-        document.getElementById('estado');
+  try {
+    estado.textContent = 'Buscando LIDAR3D-PI5...';
 
-    try {
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'LIDAR3D-' }],
+      optionalServices: [SERVICE]
+    });
 
-        estado.textContent =
-            'Buscando LIDAR3D-PI5...';
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE);
+    characteristic = await service.getCharacteristic(CHAR);
 
-        const device =
-            await navigator.bluetooth.requestDevice({
+    const value = await characteristic.readValue();
+    const texto = new TextDecoder().decode(value);
 
-                filters: [
-                    { namePrefix: 'LIDAR3D-' }
-                ],
+    estado.textContent =
+      'CONECTADO A ' + device.name +
+      '\nRespuesta Raspberry: ' + texto;
 
-                optionalServices: [
-                    SERVICE
-                ]
-            });
-
-
-        estado.textContent =
-            'Seleccionado: ' + device.name;
-
-
-        const server =
-            await device.gatt.connect();
-
-
-        const service =
-            await server.getPrimaryService(
-                SERVICE
-            );
-
-
-        const characteristic =
-            await service.getCharacteristic(
-                CHAR
-            );
-
-
-        const value =
-            await characteristic.readValue();
-
-
-        const texto =
-            new TextDecoder().decode(value);
-
-
-        estado.textContent =
-            'CONECTADO A ' +
-            device.name +
-            '\n\nRespuesta Raspberry: ' +
-            texto;
-
-    }
-
-    catch(error) {
-
-        estado.textContent =
-            'ERROR:\n' + error;
-    }
+    document.getElementById('prueba').disabled = false;
+  }
+  catch(error) {
+    estado.textContent = 'ERROR:\n' + error;
+  }
 };
 
+document.getElementById('prueba').onclick = async () => {
+  const estado = document.getElementById('estado');
+
+  try {
+    const data = new TextEncoder().encode('TEST');
+    await characteristic.writeValue(data);
+    estado.textContent = 'Comando TEST enviado a la Raspberry';
+  }
+  catch(error) {
+    estado.textContent = 'ERROR AL ENVIAR:\n' + error;
+  }
+};
 </script>
 
 </body>
