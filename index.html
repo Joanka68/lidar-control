@@ -1,105 +1,66 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Diagnóstico BLE LiDAR</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diagnóstico BLE LiDAR V2</title>
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;background:#1e1e2e;color:#cdd6f4;text-align:center;padding:28px 18px}
 button{width:100%;max-width:430px;font-size:20px;font-weight:700;padding:20px;border:0;border-radius:16px;background:#a6e3a1;color:#11111b}
 #log{max-width:600px;margin:25px auto;text-align:left;background:#11111b;padding:18px;border-radius:14px;white-space:pre-wrap;font-family:monospace;font-size:15px;line-height:1.45}
-.ok{color:#a6e3a1}.err{color:#f38ba8}
-</style>
-</head>
+</style></head>
 <body>
-<h1>DIAGNÓSTICO BLE LiDAR</h1>
-<button id="go">INICIAR DIAGNÓSTICO</button>
+<h1>DIAGNÓSTICO BLE LiDAR V2</h1>
+<button id="go">BUSCAR DISPOSITIVOS</button>
 <div id="log">Preparado.</div>
-
 <script>
 const SERVICE='7cb5a001-7e5a-42da-b8b0-2a54c81d92a1';
 const CHAR='7cb5a002-7e5a-42da-b8b0-2a54c81d92a1';
 const log=document.getElementById('log');
-
-function line(s){ log.textContent += '\n' + s; }
-function errorText(e){
-  let parts=[];
-  if(e && e.name) parts.push('name=' + e.name);
-  if(e && e.message) parts.push('message=' + e.message);
-  if(e && e.code !== undefined) parts.push('code=' + e.code);
-  parts.push('raw=' + String(e));
-  return parts.join('\n');
-}
+const line=s=>log.textContent+='\n'+s;
+const err=e=>'name='+(e?.name||'-')+'\nmessage='+(e?.message||'-')+'\nraw='+String(e);
 
 document.getElementById('go').onclick=async()=>{
-  log.textContent='0. Web Bluetooth: ' + (navigator.bluetooth ? 'OK' : 'NO DISPONIBLE');
-  if(!navigator.bluetooth) return;
-
-  let device,server,service,ch;
-
-  try{
-    line('1. Abriendo selector BLE...');
-    device=await navigator.bluetooth.requestDevice({
-      filters:[{namePrefix:'LIDAR3D-'}],
-      optionalServices:[SERVICE]
-    });
-    line('2. Dispositivo: ' + (device.name || '(sin nombre)'));
-  }catch(e){
-    line('ERROR EN SELECCIÓN:\n' + errorText(e)); return;
-  }
-
-  try{
-    line('3. Conectando GATT...');
-    server=await device.gatt.connect();
-    line('4. GATT conectado: ' + server.connected);
-  }catch(e){
-    line('ERROR EN GATT:\n' + errorText(e)); return;
-  }
-
-  try{
-    line('5. Buscando servicio...');
-    service=await server.getPrimaryService(SERVICE);
-    line('6. Servicio OK');
-  }catch(e){
-    line('ERROR EN SERVICIO:\n' + errorText(e)); return;
-  }
-
-  try{
-    line('7. Buscando característica...');
-    ch=await service.getCharacteristic(CHAR);
-    line('8. Característica OK');
-    line('   read=' + ch.properties.read);
-    line('   write=' + ch.properties.write);
-    line('   writeWithoutResponse=' + ch.properties.writeWithoutResponse);
-  }catch(e){
-    line('ERROR EN CARACTERÍSTICA:\n' + errorText(e)); return;
-  }
-
-  try{
-    line('9. Leyendo...');
-    const v=await ch.readValue();
-    line('10. LECTURA OK: ' + new TextDecoder().decode(v));
-  }catch(e){
-    line('ERROR EN LECTURA:\n' + errorText(e)); return;
-  }
-
-  try{
-    line('11. Escribiendo TEST...');
-    const data=new TextEncoder().encode('TEST');
-    if(ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse){
+ log.textContent='0. Web Bluetooth: '+(navigator.bluetooth?'OK':'NO');
+ if(!navigator.bluetooth)return;
+ let d,s,svc,ch;
+ try{
+   line('1. Abriendo selector SIN filtro de nombre...');
+   d=await navigator.bluetooth.requestDevice({
+     acceptAllDevices:true,
+     optionalServices:[SERVICE]
+   });
+   line('2. SELECCIONADO: '+(d.name||'(sin nombre)'));
+ }catch(e){line('ERROR SELECCIÓN:\n'+err(e));return;}
+ try{
+   line('3. Conectando GATT...');
+   s=await d.gatt.connect(); line('4. GATT OK');
+ }catch(e){line('ERROR GATT:\n'+err(e));return;}
+ try{
+   line('5. Buscando servicio LiDAR...');
+   svc=await s.getPrimaryService(SERVICE); line('6. SERVICIO OK');
+ }catch(e){line('ERROR SERVICIO:\n'+err(e));return;}
+ try{
+   ch=await svc.getCharacteristic(CHAR);
+   line('7. CARACTERÍSTICA OK');
+   line('read='+ch.properties.read);
+   line('write='+ch.properties.write);
+   line('writeWithoutResponse='+ch.properties.writeWithoutResponse);
+ }catch(e){line('ERROR CARACTERÍSTICA:\n'+err(e));return;}
+ try{
+   const v=await ch.readValue();
+   line('8. LECTURA OK: '+new TextDecoder().decode(v));
+ }catch(e){line('ERROR LECTURA:\n'+err(e));return;}
+ try{
+   const data=new TextEncoder().encode('TEST');
+   if(ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse)
       await ch.writeValueWithoutResponse(data);
-    }else if(ch.writeValueWithResponse){
+   else if(ch.writeValueWithResponse)
       await ch.writeValueWithResponse(data);
-    }else{
+   else
       await ch.writeValue(data);
-    }
-    line('12. ESCRITURA OK');
-    line('DIAGNÓSTICO COMPLETADO');
-  }catch(e){
-    line('ERROR EN ESCRITURA:\n' + errorText(e));
-  }
+   line('9. ESCRITURA TEST OK');
+   line('DIAGNÓSTICO COMPLETADO');
+ }catch(e){line('ERROR ESCRITURA:\n'+err(e));}
 };
-</script>
-</body>
-</html>
+</script></body></html>
 
