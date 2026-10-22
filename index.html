@@ -2,89 +2,104 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Control LiDAR 3D</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diagnóstico BLE LiDAR</title>
 <style>
-body{
-  font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;
-  background:#1e1e2e;
-  color:#cdd6f4;
-  text-align:center;
-  padding:40px 20px;
-}
-button{
-  display:block;
-  width:100%;
-  max-width:400px;
-  margin:16px auto;
-  font-size:20px;
-  font-weight:bold;
-  padding:20px;
-  border:0;
-  border-radius:16px;
-}
-#conectar{background:#a6e3a1;color:#11111b;}
-#prueba{background:#89b4fa;color:#11111b;}
-#estado{margin-top:30px;font-size:18px;white-space:pre-line;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;background:#1e1e2e;color:#cdd6f4;text-align:center;padding:28px 18px}
+button{width:100%;max-width:430px;font-size:20px;font-weight:700;padding:20px;border:0;border-radius:16px;background:#a6e3a1;color:#11111b}
+#log{max-width:600px;margin:25px auto;text-align:left;background:#11111b;padding:18px;border-radius:14px;white-space:pre-wrap;font-family:monospace;font-size:15px;line-height:1.45}
+.ok{color:#a6e3a1}.err{color:#f38ba8}
 </style>
 </head>
 <body>
-
-<h1>ESTACIÓN LiDAR 3D</h1>
-
-<button id="conectar">CONECTAR BLUETOOTH</button>
-<button id="prueba" disabled>ENVIAR PRUEBA</button>
-
-<div id="estado">Sin conectar</div>
+<h1>DIAGNÓSTICO BLE LiDAR</h1>
+<button id="go">INICIAR DIAGNÓSTICO</button>
+<div id="log">Preparado.</div>
 
 <script>
-const SERVICE = '7cb5a001-7e5a-42da-b8b0-2a54c81d92a1';
-const CHAR    = '7cb5a002-7e5a-42da-b8b0-2a54c81d92a1';
+const SERVICE='7cb5a001-7e5a-42da-b8b0-2a54c81d92a1';
+const CHAR='7cb5a002-7e5a-42da-b8b0-2a54c81d92a1';
+const log=document.getElementById('log');
 
-let characteristic = null;
+function line(s){ log.textContent += '\n' + s; }
+function errorText(e){
+  let parts=[];
+  if(e && e.name) parts.push('name=' + e.name);
+  if(e && e.message) parts.push('message=' + e.message);
+  if(e && e.code !== undefined) parts.push('code=' + e.code);
+  parts.push('raw=' + String(e));
+  return parts.join('\n');
+}
 
-document.getElementById('conectar').onclick = async () => {
-  const estado = document.getElementById('estado');
+document.getElementById('go').onclick=async()=>{
+  log.textContent='0. Web Bluetooth: ' + (navigator.bluetooth ? 'OK' : 'NO DISPONIBLE');
+  if(!navigator.bluetooth) return;
 
-  try {
-    estado.textContent = 'Buscando LIDAR3D-PI5...';
+  let device,server,service,ch;
 
-    const device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'LIDAR3D-' }],
-      optionalServices: [SERVICE]
+  try{
+    line('1. Abriendo selector BLE...');
+    device=await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:'LIDAR3D-'}],
+      optionalServices:[SERVICE]
     });
-
-    const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(SERVICE);
-    characteristic = await service.getCharacteristic(CHAR);
-
-    const value = await characteristic.readValue();
-    const texto = new TextDecoder().decode(value);
-
-    estado.textContent =
-      'CONECTADO A ' + device.name +
-      '\nRespuesta Raspberry: ' + texto;
-
-    document.getElementById('prueba').disabled = false;
+    line('2. Dispositivo: ' + (device.name || '(sin nombre)'));
+  }catch(e){
+    line('ERROR EN SELECCIÓN:\n' + errorText(e)); return;
   }
-  catch(error) {
-    estado.textContent = 'ERROR:\n' + error;
-  }
-};
 
-document.getElementById('prueba').onclick = async () => {
-  const estado = document.getElementById('estado');
-
-  try {
-    const data = new TextEncoder().encode('TEST');
-    await characteristic.writeValue(data);
-    estado.textContent = 'Comando TEST enviado a la Raspberry';
+  try{
+    line('3. Conectando GATT...');
+    server=await device.gatt.connect();
+    line('4. GATT conectado: ' + server.connected);
+  }catch(e){
+    line('ERROR EN GATT:\n' + errorText(e)); return;
   }
-  catch(error) {
-    estado.textContent = 'ERROR AL ENVIAR:\n' + error;
+
+  try{
+    line('5. Buscando servicio...');
+    service=await server.getPrimaryService(SERVICE);
+    line('6. Servicio OK');
+  }catch(e){
+    line('ERROR EN SERVICIO:\n' + errorText(e)); return;
+  }
+
+  try{
+    line('7. Buscando característica...');
+    ch=await service.getCharacteristic(CHAR);
+    line('8. Característica OK');
+    line('   read=' + ch.properties.read);
+    line('   write=' + ch.properties.write);
+    line('   writeWithoutResponse=' + ch.properties.writeWithoutResponse);
+  }catch(e){
+    line('ERROR EN CARACTERÍSTICA:\n' + errorText(e)); return;
+  }
+
+  try{
+    line('9. Leyendo...');
+    const v=await ch.readValue();
+    line('10. LECTURA OK: ' + new TextDecoder().decode(v));
+  }catch(e){
+    line('ERROR EN LECTURA:\n' + errorText(e)); return;
+  }
+
+  try{
+    line('11. Escribiendo TEST...');
+    const data=new TextEncoder().encode('TEST');
+    if(ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse){
+      await ch.writeValueWithoutResponse(data);
+    }else if(ch.writeValueWithResponse){
+      await ch.writeValueWithResponse(data);
+    }else{
+      await ch.writeValue(data);
+    }
+    line('12. ESCRITURA OK');
+    line('DIAGNÓSTICO COMPLETADO');
+  }catch(e){
+    line('ERROR EN ESCRITURA:\n' + errorText(e));
   }
 };
 </script>
-
 </body>
 </html>
+
