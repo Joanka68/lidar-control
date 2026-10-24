@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
+# Los setup.bash de ROS2 pueden consultar variables que no estan definidas.
+# Desactivar nounset explicitamente, incluso si se hereda mediante SHELLOPTS.
+set +u
+set -Eeo pipefail
 source /opt/ros/jazzy/setup.bash
+set +u
 source "$HOME/ros2_ws/install/setup.bash"
 
 set -Eeuo pipefail
