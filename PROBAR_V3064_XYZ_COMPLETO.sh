@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
 
 source /opt/ros/jazzy/setup.bash
 source "$HOME/ros2_ws/install/setup.bash"
+
+set -Eeuo pipefail
 
 BASE="$HOME/Proyecto_Lidar/pruebas/V3064_XYZ/V30_6_4_PROPUESTA_PASILLO/CODIGO"
 XYZ="$HOME/Proyecto_Lidar/data/nube_puntos_221026_1911.xyz"
