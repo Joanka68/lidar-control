@@ -1,67 +1,102 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>LiDAR 3D · Control BLE</title>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#1e1e2e"><title>LiDAR 3D · Control móvil V2</title>
 <style>
-:root{font-family:system-ui,-apple-system,sans-serif;color:#cdd6f4;background:#1e1e2e}
-body{margin:0;padding:24px 18px 40px;max-width:620px;margin-inline:auto}
-h1{text-align:center;font-size:1.75rem;margin:22px 0 6px}
-small{display:block;text-align:center;color:#a6adc8;margin-bottom:24px}
-button{border:0;border-radius:18px;padding:20px 10px;font-size:1.06rem;font-weight:750;color:#11111b;cursor:pointer}
-button:disabled{opacity:.36}
-.connect{width:100%;background:#a6e3a1;margin-bottom:18px}
-.status{background:#11111b;padding:15px;border-radius:16px;min-height:50px;white-space:pre-wrap;line-height:1.5}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:18px}
-.normal{background:#a6e3a1}.precise{background:#89b4fa}.cancel{background:#f9e2af}.usb{background:#f5c2e7}
-.desktop{background:#bac2de}.off{background:#f38ba8}
-.note{font-size:.9rem;color:#a6adc8;line-height:1.5;margin-top:20px}
+:root{font-family:system-ui,-apple-system,sans-serif;color:#cdd6f4;background:#1e1e2e}body{margin:0;padding:18px 18px 35px;max-width:620px;margin-inline:auto}h1{text-align:center;font-size:1.7rem;margin:8px}small{display:block;text-align:center;color:#a6adc8;margin-bottom:20px}button{border:0;border-radius:16px;padding:19px 10px;font-size:1rem;font-weight:750;color:#11111b;cursor:pointer;min-height:58px}button:disabled{opacity:.38;cursor:default}.connect{width:100%;background:#a6e3a1;margin-bottom:15px}.status{background:#11111b;padding:15px;border-radius:14px;min-height:65px;white-space:pre-wrap;line-height:1.45}.info,.notice{font-size:.9rem;padding:10px 0;white-space:pre-wrap}.notice{color:#f9e2af}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}.normal{background:#a6e3a1}.precise{background:#89b4fa}.off{background:#f38ba8}.usb{background:#f9e2af}.desktop{background:#bac2de;width:100%;margin-top:12px}.note{font-size:.85rem;color:#a6adc8;line-height:1.5}details{margin-top:18px}ol{font-size:.85rem;padding-left:24px}li{margin:8px 0}dialog{border:0;border-radius:16px;background:#313244;color:#cdd6f4;width:min(85%,420px)}dialog::backdrop{background:#000a}input{box-sizing:border-box;width:100%;padding:12px;font-size:16px;margin:12px 0;border-radius:8px;border:1px solid #a6adc8}dialog button{margin:5px}.connection{font-size:.85rem;color:#a6adc8;margin-bottom:8px}
 </style></head><body>
-<h1>LiDAR 3D</h1><small>Control desde iPhone · Raspberry Pi 5</small>
+<h1>LiDAR 3D</h1><small>Control desde iPhone · Raspberry Pi 5 · V2</small>
 <button class="connect" id="connect">CONECTAR BLUETOOTH</button>
-<div class="status" id="status">Desconectado. Pulsa conectar.</div>
+<div class="connection" id="connection">Desconectado</div>
+<div class="status" id="status" role="status" aria-live="polite">Conecta para ver el estado de la pantalla táctil.</div>
+<div class="info" id="info">Ángulo: — | Puntos: —</div><div class="notice" id="notice" role="status"></div>
 <div class="grid">
 <button class="normal cmd" data-cmd="N" disabled>ESCANEO NORMAL<br>60 s</button>
 <button class="precise cmd" data-cmd="P" disabled>ESCANEO PRECISO<br>180 s</button>
-<button class="cancel cmd" data-cmd="C" disabled>CANCELAR<br>CUENTA ATRÁS</button>
-<button class="usb cmd" data-cmd="U" disabled>COPIAR<br>7 ARCHIVOS USB</button>
-<button class="desktop cmd" data-cmd="X" disabled>SALIR AL<br>ESCRITORIO</button>
-<button class="off" disabled>APAGAR EQUIPO<br>NO DISPONIBLE</button>
-</div>
-<p class="note">Las órdenes se envían directamente por Bluetooth a la Raspberry. No hay parada remota durante un escaneo. El apagado remoto permanece deshabilitado por seguridad. La pantalla táctil sigue funcionando.</p>
+<button class="off cmd" data-cmd="D" disabled>APAGAR<br>EQUIPO</button>
+<button class="usb cmd" data-cmd="U" disabled>COPIAR RESULTADOS<br>A USB · 7 ARCHIVOS</button>
+</div><button class="desktop cmd" data-cmd="X" disabled>SALIR AL ESCRITORIO UBUNTU</button>
+<details><summary>Últimos mensajes del equipo</summary><ol id="history"></ol></details>
+<p class="note">El estado se actualiza por Bluetooth mientras esta página está abierta. Para apagar, introduce la contraseña configurada en la Raspberry. Durante el escaneo, la generación de archivos y la copia USB, el apagado queda bloqueado.</p>
+<dialog id="offDialog"><form id="offForm"><h2>Apagar equipo</h2><p>Se apagará la Raspberry Pi. Introduce tu contraseña para confirmar.</p><label for="password">Contraseña de apagado</label><input id="password" type="password" autocomplete="off" required maxlength="128"><div><button type="button" id="cancelOff">CANCELAR</button><button type="submit" class="off">CONFIRMAR APAGADO</button></div></form></dialog>
 <script>
-const SERVICE='7cb5a001-7e5a-42da-b8b0-2a54c81d92a1';
-const RX='7cb5a002-7e5a-42da-b8b0-2a54c81d92a1';
-let device=null, characteristic=null, sending=false;
-const status=document.getElementById('status'), connect=document.getElementById('connect');
-function show(msg){status.textContent=msg}
-function enabled(yes){document.querySelectorAll('.cmd').forEach(b=>b.disabled=!yes)}
-function disconnected(){characteristic=null;enabled(false);connect.textContent='CONECTAR BLUETOOTH';show('Bluetooth desconectado. Pulsa conectar.')}
-connect.onclick=async()=>{
-  if(!navigator.bluetooth){show('Este navegador no admite Web Bluetooth. Abre la página en Bluefy.');return}
-  connect.disabled=true;
-  try{
-    show('Selecciona joanedu-desktop en el listado Bluetooth…');
-    device=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SERVICE]});
-    device.addEventListener('gattserverdisconnected',disconnected);
-    show('Conectando con '+(device.name||'Raspberry')+'…');
-    const server=await device.gatt.connect();
-    const service=await server.getPrimaryService(SERVICE);
-    characteristic=await service.getCharacteristic(RX);
-    enabled(true);connect.textContent='RECONECTAR';
-    show('CONECTADO: '+(device.name||'Raspberry')+'\nListo para enviar órdenes.');
-  }catch(e){show('Error de conexión: '+(e.message||String(e)));enabled(false)}
-  finally{connect.disabled=false}
+'use strict';
+const SERVICE='7cb5a001-7e5a-42da-b8b0-2a54c81d92a1',RX='7cb5a002-7e5a-42da-b8b0-2a54c81d92a1',TX='7cb5a003-7e5a-42da-b8b0-2a54c81d92a1';
+const el=id=>document.getElementById(id),encoder=new TextEncoder();
+let device=null,rx=null,tx=null,state=null,sending=false,generation=0,lastSeen=0,serial=Promise.resolve(),chunks=[],seq=-1,total=0,lastReply=-1,log=[];
+function queue(fn){const p=serial.catch(()=>{}).then(fn);serial=p.catch(()=>{});return p;}
+function buttons(){const fresh=state?.online && Date.now()-lastSeen<6000 && !sending;document.querySelectorAll('.cmd').forEach(b=>b.disabled=!(fresh&&state.allowed.includes(b.dataset.cmd)));}
+function notice(s){el('notice').textContent=s;}
+function onDisconnect(event){if(event.target===device)disconnect();}
+function disconnect(){generation++;rx=null;tx=null;state=null;lastSeen=0;chunks=[];seq=-1;buttons();el('connect').textContent='CONECTAR BLUETOOTH';el('connection').textContent='Bluetooth desconectado';notice('Conecta de nuevo para recuperar el estado actual.');el('offDialog').close();el('password').value='';}
+function showState(value){
+ if(value.v!==2||typeof value.status!=='string'||typeof value.allowed!=='string')throw Error('Estado incompatible');
+ state=value;lastSeen=Date.now();el('status').textContent=value.status;el('info').textContent=value.info||'';
+ el('connection').textContent=value.online?'Conectado · estado actualizado':'Bluetooth conectado · interfaz LiDAR sin respuesta';
+ const messages=Array.isArray(value.history)?value.history:[];
+ for(const text of messages){if(typeof text==='string'&&!log.includes(text))log.push(text);}
+ log=log.slice(-30);el('history').replaceChildren(...log.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
+ if(value.reply_id!==lastReply){lastReply=value.reply_id;notice(value.reply||'');}
+ if(!value.auth)notice('Apagado deshabilitado: configura la contraseña en la Raspberry.');
+ buttons();
+}
+function frame(view){
+ const b=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);if(b.length<7||b[0]!==2)throw Error('Protocolo Bluetooth incompatible');
+ const s=b[1]*256+b[2],i=b[3]*256+b[4],n=b[5]*256+b[6];if(n<1||n>924||i>=n)throw Error('Trama inválida');
+ if(i===0){seq=s;total=n;chunks=[];}
+ if(seq!==s||total!==n||i!==chunks.length){chunks=[];seq=-1;return false;}
+ chunks.push(b.slice(7));if(chunks.length!==total)return false;
+ const raw=new Uint8Array(chunks.reduce((n,c)=>n+c.length,0));let at=0;for(const c of chunks){raw.set(c,at);at+=c.length;}
+ showState(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw)));chunks=[];seq=-1;return true;
+}
+async function poll(token){
+ if(token!==generation||!tx)return;
+ try{const value=await queue(()=>tx.readValue());if(token!==generation)return;const complete=frame(value);setTimeout(()=>poll(token),complete?250:10);}
+ catch(e){if(token!==generation)return;state=null;buttons();notice('No se puede actualizar el estado: '+e.message);setTimeout(()=>poll(token),1200);}
+}
+el('connect').onclick=async()=>{
+ if(!navigator.bluetooth){notice('Abre esta página en Bluefy para usar Bluetooth.');return;}
+ el('connect').disabled=true;generation++;const token=generation;
+ try{
+  if(device){device.removeEventListener('gattserverdisconnected',onDisconnect);if(device.gatt.connected)device.gatt.disconnect();}
+  device=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SERVICE]});
+  device.addEventListener('gattserverdisconnected',onDisconnect);
+  const server=await device.gatt.connect(),service=await server.getPrimaryService(SERVICE);
+  rx=await service.getCharacteristic(RX);
+  try{tx=await service.getCharacteristic(TX);}catch(e){throw Error('Falta el servicio de estados V2. Instala el paquete en la Raspberry y reinicia Bluetooth.');}
+  chunks=[];seq=-1;lastReply=-1;state=null;lastSeen=0;el('connect').textContent='RECONECTAR';notice('Leyendo estado de la pantalla táctil…');
+  const live=++generation;poll(live);
+ }catch(e){state=null;buttons();notice(e.message||String(e));}
+ finally{el('connect').disabled=false;}
 };
+async function send(command){
+ if(!rx)throw Error('Bluetooth desconectado');
+ const data=encoder.encode(JSON.stringify(command)+'\n');
+ await queue(async()=>{for(let i=0;i<data.length;i+=20)await rx.writeValue(data.slice(i,i+20));});
+}
+function fromHex(s){if(typeof s!=='string'||s.length%2||!/^[0-9a-f]+$/i.test(s))throw Error('Datos de autenticación inválidos');return Uint8Array.from(s.match(/../g),x=>parseInt(x,16));}
+async function powerProof(password,auth){
+ if(!crypto.subtle)throw Error('Este navegador no permite verificar la contraseña.');
+ if(!auth||auth.iterations!==250000)throw Error('Configuración de apagado incompatible');
+ const key=await crypto.subtle.importKey('raw',encoder.encode(password),'PBKDF2',false,['deriveBits']);
+ const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:fromHex(auth.salt),iterations:auth.iterations,hash:'SHA-256'},key,256);
+ const hmacKey=await crypto.subtle.importKey('raw',bits,{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const proof=new Uint8Array(await crypto.subtle.sign('HMAC',hmacKey,encoder.encode('POWER_OFF:'+auth.nonce)));
+ return Array.from(proof,x=>x.toString(16).padStart(2,'0')).join('');
+}
 document.querySelectorAll('.cmd').forEach(b=>b.onclick=async()=>{
-  if(!characteristic||sending)return;
-  const cmd=b.dataset.cmd;
-  const labels={N:'escaneo normal',P:'escaneo preciso',C:'cancelación',U:'copia USB',X:'salida al escritorio'};
-  if((cmd==='N'||cmd==='P')&&!confirm('¿Iniciar '+labels[cmd]+'? La Raspberry comenzará una cuenta atrás de 10 segundos.'))return;
-  if(cmd==='X'&&!confirm('¿Salir del menú LiDAR al escritorio de Ubuntu?'))return;
-  sending=true;
-  try{
-    await characteristic.writeValue(new TextEncoder().encode(cmd));
-    show('Orden enviada: '+labels[cmd]+'\nLa ejecución depende del estado del LiDAR en la pantalla táctil.');
-  }catch(e){show('Error al enviar: '+(e.message||String(e)))}
-  finally{sending=false}
+ if(b.disabled||sending)return;const cmd=b.dataset.cmd;
+ if(cmd==='D'){el('password').value='';el('offDialog').showModal();el('password').focus();return;}
+ if((cmd==='N'||cmd==='P')&&!confirm('¿Iniciar escaneo '+(cmd==='N'?'normal':'preciso')+'? Se mantiene la preparación de la pantalla táctil.'))return;
+ if(cmd==='X'&&!confirm('¿Salir al escritorio de Ubuntu?'))return;
+ sending=true;buttons();try{await send({cmd});notice('Orden enviada; esperando respuesta del equipo.');}catch(e){notice('Error al enviar: '+e.message);}finally{sending=false;buttons();}
 });
+el('cancelOff').onclick=()=>{el('offDialog').close();el('password').value='';};
+el('offDialog').addEventListener('close',()=>{el('password').value='';});
+el('offForm').onsubmit=async e=>{
+ e.preventDefault();if(sending)return;
+ if(!state?.online||!state.allowed.includes('D')||Date.now()-lastSeen>=6000){el('offDialog').close();notice('El equipo está ocupado o sin comunicación.');return;}
+ let password=el('password').value;const auth=state.auth;sending=true;buttons();el('offDialog').close();
+ try{const proof=await powerProof(password,auth);password='';await send({cmd:'D',nonce:auth.nonce,proof});notice('Solicitud de apagado enviada; esperando validación.');}
+ catch(e){notice('No se ha solicitado el apagado: '+e.message);}finally{password='';sending=false;buttons();}
+};
+setInterval(()=>{buttons();if(lastSeen&&Date.now()-lastSeen>=6000)el('connection').textContent='Estado sin actualizar · controles bloqueados';},1000);
 </script></body></html>
